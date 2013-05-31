@@ -1,0 +1,117 @@
+#!/bin/bash
+#Starts and stops both Snort and Barnyard2
+#
+# chkconfig: 345 90 20
+# description: Network Intrusion Detection
+
+#Change to reflect the number of threads of snort you want to run.
+threads=4
+
+case "$1" in
+start )
+
+num=$(pgrep -f snort | wc -l)
+if [ $num -gt 0 ]
+        then
+                echo "Snort is currently running. Please stop and restart."
+                exit 0
+fi
+
+#clearing the cache
+sync; echo 3 > /proc/sys/vm/drop_caches
+
+#Load the pf_ring module with the correct settings
+rmmod pf_ring.ko >> /dev/null
+insmod /root/PF_RING/kernel/pf_ring.ko enable_tx_capture=0 transparent_mode=1 min_num_slots=16384
+
+#Clean up old logs and PIDs
+rm -rf /var/log/snort/*
+find /var/run -name "snort*" | xargs rm -rf
+find /var/run -name "barnyard*" | xargs rm -rf
+
+#Ensure PID directories are there
+for i in $( eval echo {01..$threads})
+do
+if [ ! -d /var/run/snort$1 ]; then mkdir /var/run/snort$i; fi
+if [ ! -d /var/run/barnyard2-$1 ]; then mkdir /var/run/barnyard2-$i; fi
+touch /var/log/snort/waldo$i
+done
+
+#Starting a number of snort processes
+for i in $( eval echo {01..$threads})
+do
+/usr/local/bin/snort -c /opt/snort/etc/snort.conf$i --daq-dir /usr/local/lib/daq --daq pfring --daq-var clusterid=10 --pid-path=/var/run/snort$i -i eth0 -D >> /dev/null
+done
+
+#Starting a number of barnyard2 processes
+for i in $( eval echo {01..$threads})
+do
+/usr/local/bin/barnyard2 -c /opt/snort/etc/barnyard2.conf$i -d /var/log/snort -f alert.log$i --pid-path=/var/run/barnyard2-$i -D
+done
+
+#Checking to see that the correct number of threads started
+numStart=$(pgrep -f snort | wc -l)
+numThreads=$(expr $threads \* 2)
+if [ $numStart -eq $numThreads ]
+        then
+                echo "Snort started successfully."
+                exit 0
+     else
+          echo "Snort failed to start."
+          exit 1
+fi
+;;
+
+stop )
+
+pkill snort
+pkill barnyard2
+
+sleep 5
+
+num=$(pgrep -f snort | wc -l)
+if [ $num -eq 0 ]
+     then
+          echo "All processes have been stopped."
+          exit 0
+     else
+          echo "Something is still running..."
+          exit 1
+fi
+;;
+
+restart )
+$0 stop
+$0 start
+;;
+
+status )
+numStart=$(pgrep -f snort | wc -l)
+numThreads=$(expr $threads \* 2)
+
+if [ $numStart -lt $numThreads ]
+     then
+          echo "I don't see enough processes running. Something might be wrong."
+          exit 1
+     else
+          echo "Snort is running..."
+          exit 0
+fi
+;;
+
+print )
+
+dropped=$(pgrep snort)
+
+for i in $dropped;
+do
+kill -s USR1 $i
+tail -500 /var/log/messages | grep -o "snort.$i.*Dropped:.*%)" | tail -1
+#tail -500 /var/log/messages | grep -o "snort.$i.*Total:.*" | tail -1
+done
+;;
+
+* )
+echo "Usage: $0 {start|stop|restart|status|print}"
+exit 1
+esac
