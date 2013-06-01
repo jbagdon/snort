@@ -4,7 +4,7 @@
 The files contained in this repository will install Snort, Barnyard2, Oinkmaster, and PF_RING. Snort is one of the best Network Intrusion Detection systems out there (my opinion). PF_RING allows many Snort processes to be run on a single host all listening for traffic on the same interface. I currently administer a host that consists of 16 Snort processes inspecting traffic at rates of 600 packets per second. This system is highly scalable and has no issues keeping up.
 
 ### Install
-* git clone git@github.com:jbagdon/snort.git
+* `git clone git@github.com:jbagdon/snort.git`
 * Copy the puppet directory to /root/ so you end up with /root/puppet/
 * run puppet with 'puppet apply snort.pp'
 * If you would like to run this from your puppet server then you need to change the location paramiters in the snort.pp
